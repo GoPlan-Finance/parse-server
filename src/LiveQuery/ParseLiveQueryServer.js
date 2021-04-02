@@ -14,6 +14,7 @@ import {
   runLiveQueryEventHandlers,
   maybeRunConnectTrigger,
   maybeRunSubscribeTrigger,
+  maybeRunUnsubscribeTrigger,
   maybeRunAfterEventTrigger,
 } from '../triggers';
 import { getAuthForSessionToken, Auth } from '../Auth';
@@ -731,7 +732,7 @@ class ParseLiveQueryServer {
     this._handleSubscribe(parseWebsocket, request);
   }
 
-  _handleUnsubscribe(parseWebsocket: any, request: any, notifyClient: boolean = true): any {
+  async _handleUnsubscribe(parseWebsocket: any, request: any, notifyClient: boolean = true): any {
     // If we can not find this client, return error to client
     if (!Object.prototype.hasOwnProperty.call(parseWebsocket, 'clientId')) {
       Client.pushError(
@@ -778,11 +779,28 @@ class ParseLiveQueryServer {
       return;
     }
 
+    const subscription = subscriptionInfo.subscription;
+    const className = subscription.className;
+    try {
+      const req = {
+        query: subscription.query,
+        sessionToken: subscriptionInfo.sessionToken,
+        useMasterKey: client.hasMasterKey,
+        installationId: client.installationId,
+      }
+
+      await maybeRunUnsubscribeTrigger('beforeUnsubscribe', className, req);
+    } catch (e) {
+      Client.pushError(parseWebsocket, e.code || 141, e.message || e, false, request.requestId);
+      logger.error(
+        `Failed running beforeUnsubscribe on ${className} for session ${request.sessionToken} with:\n Error: ` +
+        JSON.stringify(e)
+      );
+    }
+
     // Remove subscription from client
     client.deleteSubscriptionInfo(requestId);
     // Remove client from subscription
-    const subscription = subscriptionInfo.subscription;
-    const className = subscription.className;
     subscription.deleteClientSubscription(parseWebsocket.clientId, requestId);
     // If there is no client which is subscribing this subscription, remove it from subscriptions
     const classSubscriptions = this.subscriptions.get(className);

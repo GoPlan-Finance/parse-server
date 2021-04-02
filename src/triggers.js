@@ -18,6 +18,7 @@ export const Types = {
   afterDeleteFile: 'afterDeleteFile',
   beforeConnect: 'beforeConnect',
   beforeSubscribe: 'beforeSubscribe',
+  beforeUnsubscribe: 'beforeUnsubscribe',
   afterEvent: 'afterEvent',
 };
 
@@ -931,6 +932,28 @@ export async function maybeRunConnectTrigger(triggerType, request) {
 }
 
 export async function maybeRunSubscribeTrigger(triggerType, className, request) {
+  const trigger = getTrigger(className, triggerType, Parse.applicationId);
+  if (!trigger) {
+    return;
+  }
+  const parseQuery = new Parse.Query(className);
+  parseQuery.withJSON(request.query);
+  request.query = parseQuery;
+  request.user = await userForSessionToken(request.sessionToken);
+  await maybeRunValidator(request, `${triggerType}.${className}`);
+  if (request.skipWithMasterKey) {
+    return;
+  }
+  await trigger(request);
+  const query = request.query.toJSON();
+  if (query.keys) {
+    query.fields = query.keys.split(',');
+  }
+  request.query = query;
+}
+
+
+export async function maybeRunUnsubscribeTrigger(triggerType, className, request) {
   const trigger = getTrigger(className, triggerType, Parse.applicationId);
   if (!trigger) {
     return;
