@@ -119,18 +119,6 @@
     "@node-rs/bcrypt": "0.4.1"
   },
   "types": "types/index.d.ts",
-  "typesVersions": {
-    "<=3.6": {
-      "*": [
-        "types/ts3.6/*"
-      ]
-    },
-    "<=4.0": {
-      "*": [
-        "types/ts4.0/*"
-      ]
-    }
-  },
   "collective": {
     "type": "opencollective",
     "url": "https://opencollective.com/parse-server",
