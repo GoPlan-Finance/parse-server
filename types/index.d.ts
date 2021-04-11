@@ -26,6 +26,8 @@
 // Minimum TypeScript Version: 3.5
 
 /// <reference types="node" />
+/// <reference path="./node.d.ts" />
+/// <reference path="./react-native.d.ts" />
 
 import { EventEmitter } from 'events';
 
@@ -1375,6 +1377,10 @@ declare global {
                 context: object;
             }
 
+            interface BeforSubscribeRequest<T = Object> extends TriggerRequest<T> {
+                context: object;
+            }
+
             interface FileTriggerRequest extends TriggerRequest<File> {
                 file: File;
                 fileSize: number;
@@ -1440,6 +1446,16 @@ declare global {
             function afterSaveFile(func?: (request: FileTriggerRequest) => PromiseLike<void> | void, validator?: Validator|((request: FunctionRequest) => any)): void;
             function beforeDeleteFile(func?: (request: FileTriggerRequest) => PromiseLike<void> | void, validator?: Validator|((request: FunctionRequest) => any)): void;
             function afterDeleteFile(func?: (request: FileTriggerRequest) => PromiseLike<void> | void, validator?: Validator|((request: FunctionRequest) => any)): void;
+
+            function beforeSubscribe<T extends Object = Object>(
+              arg1: { new (): T } | string,
+              func?: (request: BeforSubscribeRequest<T>) => Promise<void> | void,
+            ): void;
+
+            function beforeUnsubscribe<T extends Object = Object>(
+              arg1: { new (): T } | string,
+              func?: (request: BeforSubscribeRequest<T>) => Promise<void> | void,
+            ): void;
 
             function define(name: string, func: (request: FunctionRequest) => any, validator?: Validator|((request: FunctionRequest) => any)): void;
             function define<T extends () => any>(
