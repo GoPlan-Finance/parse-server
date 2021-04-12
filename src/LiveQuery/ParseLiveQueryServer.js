@@ -783,18 +783,19 @@ class ParseLiveQueryServer {
     const className = subscription.className;
     try {
       const req = {
+        requestId: request.requestId,
         query: subscription.query,
         sessionToken: subscriptionInfo.sessionToken,
         useMasterKey: client.hasMasterKey,
         installationId: client.installationId,
-      }
+      };
 
       await maybeRunUnsubscribeTrigger('beforeUnsubscribe', className, req);
     } catch (e) {
       Client.pushError(parseWebsocket, e.code || 141, e.message || e, false, request.requestId);
       logger.error(
         `Failed running beforeUnsubscribe on ${className} for session ${request.sessionToken} with:\n Error: ` +
-        JSON.stringify(e)
+          JSON.stringify(e)
       );
     }
 
