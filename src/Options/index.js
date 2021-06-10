@@ -1,3 +1,4 @@
+// @flow
 import { AnalyticsAdapter } from '../Adapters/Analytics/AnalyticsAdapter';
 import { FilesAdapter } from '../Adapters/Files/FilesAdapter';
 import { LoggerAdapter } from '../Adapters/Logger/LoggerAdapter';
@@ -8,7 +9,6 @@ import { PubSubAdapter } from '../Adapters/PubSub/PubSubAdapter';
 import { WSSAdapter } from '../Adapters/WebSocketServer/WSSAdapter';
 import { CheckGroup } from '../Security/CheckGroup';
 
-// @flow
 type Adapter<T> = string | any | T;
 type NumberOrBoolean = number | boolean;
 type NumberOrString = number | string;
@@ -321,40 +321,6 @@ export interface PagesCustomUrlsOptions {
   emailVerificationLinkInvalid: ?string;
   /* The URL to the custom page for email verification -> link expired. */
   emailVerificationLinkExpired: ?string;
-}
-
-export interface FieldType {
-  type:
-    | 'String'
-    | 'Boolean'
-    | 'File'
-    | 'Number'
-    | 'Relation'
-    | 'Pointer'
-    | 'Date'
-    | 'GeoPoint'
-    | 'Polygon'
-    | 'Array'
-    | 'Object';
-  required?: boolean;
-  defaultValue?: mixed;
-  targetClass?: string;
-}
-
-export interface JSONSchema {
-  className: '_User' | '_Role' | string;
-  fields?: { [key: string]: FieldType };
-  indexes?: any;
-  classLevelPermissions?: {
-    find?: any,
-    count?: any,
-    get?: any,
-    update?: any,
-    create?: any,
-    delete?: any,
-    addField?: any,
-    protectedFields?: any,
-  };
 }
 
 export interface CustomPagesOptions {
