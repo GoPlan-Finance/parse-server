@@ -1,15 +1,29 @@
-import Parse from 'parse/node';
+// @flow
+// import Parse from 'parse/node';
+const Parse = require('parse/node');
 import { logger } from '../logger';
 import Config from '../Config';
 import { internalCreateSchema, internalUpdateSchema } from '../Routers/SchemasRouter';
-import { defaultColumns } from '../Controllers/SchemaController';
+import { defaultColumns, systemClasses } from '../Controllers/SchemaController';
 import { ParseServerOptions } from '../Options';
 import * as Migrations from './Migrations';
 
 export class DefinedSchemas {
-  constructor(localSchemas: Migrations.JSONSchema[], config: ParseServerOptions) {
+  config: ParseServerOptions;
+  migrationOptions: Migrations.MigrationsOptions;
+  localSchemas: Migrations.JSONSchema[];
+  retries: number;
+  maxRetries: number;
+
+  constructor(migrationsOptions: Migrations.MigrationsOptions[], config: ParseServerOptions) {
+    this.localSchemas = [];
     this.config = Config.get(config.appId);
-    this.localSchemas = localSchemas;
+    this.migrationsOptions = migrationsOptions;
+
+    if (migrationsOptions && migrationsOptions.schemas) {
+      this.localSchemas = migrationsOptions.schemas;
+    }
+
     this.retries = 0;
     this.maxRetries = 3;
   }
@@ -65,6 +79,8 @@ export class DefinedSchemas {
       this.allCloudSchemas = await Parse.Schema.all();
       clearTimeout(timeout);
       await Promise.all(this.localSchemas.map(async localSchema => this.saveOrUpdate(localSchema)));
+
+      this.checkForMissingSchemas();
       await this.enforceCLPForNonProvidedClass();
     } catch (e) {
       if (timeout) clearTimeout(timeout);
@@ -80,6 +96,26 @@ export class DefinedSchemas {
         logger.error(e);
         if (process.env.NODE_ENV === 'production') process.exit(1);
       }
+    }
+  }
+
+  checkForMissingSchemas() {
+    if (this.migrationsOptions.strict !== true) {
+      return;
+    }
+
+    const cloudSchemas = this.allCloudSchemas.map(s => s.className);
+    const localSchemas = this.localSchemas.map(s => s.className);
+    const missingSchemas = cloudSchemas.filter(
+      c => !localSchemas.includes(c) && !systemClasses.includes(c)
+    );
+
+    if (missingSchemas.length) {
+      logger.warn(
+        `The following schemas are currently present in the database, but not explicitly defined in a schema: "${missingSchemas.join(
+          '", "'
+        )}"`
+      );
     }
   }
 
@@ -169,7 +205,11 @@ export class DefinedSchemas {
     }
 
     const fieldsToDelete: string[] = [];
-    const fieldsToRecreate: string[] = [];
+    const fieldsToRecreate: {
+      fieldName: string,
+      from: { type: string, targetClass: string },
+      to: { type: string, targetClass: string },
+    }[] = [];
     const fieldsWithChangedParams: string[] = [];
 
     // Check deletion
@@ -190,8 +230,11 @@ export class DefinedSchemas {
             { type: localField.type, targetClass: localField.targetClass }
           )
         ) {
-          fieldsToRecreate.push(fieldName);
-          fieldsToDelete.push(fieldName);
+          fieldsToRecreate.push({
+            fieldName,
+            from: { type: field.type, targetClass: field.targetClass },
+            to: { type: localField.type, targetClass: localField.targetClass },
+          });
           return;
         }
 
@@ -201,17 +244,45 @@ export class DefinedSchemas {
         }
       });
 
-    fieldsToDelete.forEach(fieldName => {
-      newLocalSchema.deleteField(fieldName);
-    });
+    if (this.migrationsOptions.deleteExtraFields === true) {
+      fieldsToDelete.forEach(fieldName => {
+        newLocalSchema.deleteField(fieldName);
+      });
 
-    // Delete fields from the schema then apply changes
-    await this.updateSchemaToDB(newLocalSchema);
+      // Delete fields from the schema then apply changes
+      await this.updateSchemaToDB(newLocalSchema);
+    } else if (this.migrationsOptions.strict === true && fieldsToDelete.length) {
+      logger.warn(
+        `The following fields exist in the database for "${
+          localSchema.className
+        }", but are missing in the schema : "${fieldsToDelete.join('" ,"')}"`
+      );
+    }
 
-    fieldsToRecreate.forEach(fieldName => {
-      const field = localSchema.fields[fieldName];
-      this.handleFields(newLocalSchema, fieldName, field);
-    });
+    if (this.migrationsOptions.recreateModifiedFields === true) {
+      fieldsToRecreate.forEach(fieldName => {
+        newLocalSchema.deleteField(fieldName);
+      });
+
+      // Delete fields from the schema then apply changes
+      await this.updateSchemaToDB(newLocalSchema);
+
+      fieldsToRecreate.forEach(fieldName => {
+        const field = localSchema.fields[fieldName];
+        this.handleFields(newLocalSchema, fieldName, field);
+      });
+    } else if (this.migrationsOptions.strict === true && fieldsToRecreate.length) {
+      fieldsToRecreate.forEach(field => {
+        const from =
+          field.from.type + (field.from.targetClass ? ` (${field.from.targetClass})` : '');
+        const to = field.to.type + (field.to.targetClass ? ` (${field.to.targetClass})` : '');
+
+        logger.warn(
+          `The field "${field.fieldName}" type differ between the schema and the database for "${localSchema.className}"; Schema is defined as "${to}" and current database type is "${from}"`
+        );
+      });
+    }
+
     fieldsWithChangedParams.forEach(fieldName => {
       const field = localSchema.fields[fieldName];
       this.handleFields(newLocalSchema, fieldName, field);

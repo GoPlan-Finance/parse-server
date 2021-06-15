@@ -851,9 +851,8 @@ class ParseLiveQueryServer {
       const parseQuery = new Parse.Query(className);
       parseQuery.withJSON(request.query);
       request.query = subscription.query;
-      request.requestId = request.requestId;
-      request.sessionToken =  subscriptionInfo.sessionToken;
-      request.useMasterKey =  client.hasMasterKey;
+      request.sessionToken = subscriptionInfo.sessionToken;
+      request.useMasterKey = client.hasMasterKey;
       request.installationId = client.installationId;
 
       await runTrigger(trigger, `beforeUnsubscribe.${className}`, request, auth);

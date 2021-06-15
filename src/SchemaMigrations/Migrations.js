@@ -42,6 +42,13 @@ export interface IndexesInterface {
   [key: string]: IndexInterface;
 }
 
+export interface MigrationsOptions {
+  schemas: JSONSchema[];
+  strict: ?boolean;
+  deleteExtraFields: ?boolean;
+  recreateModifiedFields: ?boolean;
+}
+
 export interface JSONSchema {
   className: ClassNameType;
   fields?: { [key: string]: FieldType };
@@ -74,11 +81,11 @@ function CLP(ops: CLPType, value: CLPInterface): CLPInterface {
 
 export class CLPHelper {
   static requiresAuthentication(ops: CLPType): CLPInterface {
-    return CLPHelper(ops, { requiresAuthentication: true });
+    return CLP(ops, { requiresAuthentication: true });
   }
 
   static requiresAnonymous(ops: CLPType): CLPInterface {
-    return CLPHelper(ops, { '*': true });
+    return CLP(ops, { '*': true });
   }
 }
 
@@ -86,14 +93,9 @@ export function makeSchema(className: ClassNameType, schema: JSONSchema): JSONSc
   return {
     className,
     fields: {
-      objectId: { type: 'String' },
-      createdAt: { type: 'Date' },
-      updatedAt: { type: 'Date' },
-      ACL: { type: 'ACL' },
       ...schema.fields,
     },
     indexes: {
-      objectId: { objectId: 1 },
       ...schema.indexes,
     },
     classLevelPermissions: {

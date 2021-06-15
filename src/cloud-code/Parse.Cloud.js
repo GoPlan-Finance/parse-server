@@ -677,8 +677,6 @@ ParseCloud.onLiveQueryEvent = function (handler) {
   triggers.addLiveQueryEventHandler(handler, Parse.applicationId);
 };
 
-
-
 /**
  * Registers a before live query subscription function.
  *
@@ -718,8 +716,6 @@ ParseCloud.beforeUnsubscribe = function (parseClass, handler, validationHandler)
 ParseCloud.onLiveQueryEvent = function (handler) {
   triggers.addLiveQueryEventHandler(handler, Parse.applicationId);
 };
-
-
 
 /**
  * Registers an after live query server event function.
