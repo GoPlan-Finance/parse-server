@@ -120,7 +120,16 @@ export class DefinedSchemas {
       c => !localSchemas.includes(c) && !systemClasses.includes(c)
     );
 
-    if (missingSchemas.length) {
+    if (new Set(localSchemas).size !== localSchemas.length) {
+      logger.error(
+        `The list of schemas provided contains duplicated "className"  "${localSchemas.join(
+          '","'
+        )}"`
+      );
+      process.exit(1);
+    }
+
+    if (this.migrationsOptions.strict && missingSchemas.length) {
       logger.warn(
         `The following schemas are currently present in the database, but not explicitly defined in a schema: "${missingSchemas.join(
           '", "'
