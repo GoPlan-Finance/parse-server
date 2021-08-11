@@ -1,5 +1,4 @@
 // @flow
-// import Parse from 'parse/node';
 const Parse = require('parse/node');
 import { logger } from '../logger';
 import Config from '../Config';
@@ -68,6 +67,9 @@ export class DefinedSchemas {
     let timeout = null;
     try {
       logger.info('Running Migrations');
+      if (this.migrationsOptions && this.migrationsOptions.beforeSchemasMigration) {
+        await Promise.resolve(this.migrationsOptions.beforeSchemasMigration());
+      }
       // Set up a time out in production
       // if we fail to get schema
       // pm2 or K8s and many other process managers will try to restart the process
@@ -90,22 +92,9 @@ export class DefinedSchemas {
 
       logger.info('Running Migrations Completed');
     } catch (e) {
-      if (timeout) clearTimeout(timeout);
-      if (!e && this.retries < this.maxRetries) {
-        this.retries++;
-        // first retry 1sec, 2sec, 3sec total 6sec retry sequence
-        // retry will only happen in case of deploying multi parse server instance
-        // at the same time
-        // modern systems like k8 avoid this by doing rolling updates
-        await this.wait(1000 * this.retries);
-        await this.execute();
-      } else {
-        if (e) {
-          logger.error(`Failed to run migrations ${e}`);
-        }
+      logger.error(`Failed to run migrations: ${e}`);
 
-        if (this.migrationsOptions.strict) process.exit(1);
-      }
+      if (this.migrationsOptions.strict) process.exit(1);
     }
   }
 
@@ -206,7 +195,7 @@ export class DefinedSchemas {
 
     this.handleCLP(localSchema, newLocalSchema);
 
-    return this.saveSchemaToDB(newLocalSchema);
+    return await this.saveSchemaToDB(newLocalSchema);
   }
 
   async updateSchema(localSchema: Migrations.JSONSchema, cloudSchema: Parse.Schema) {
@@ -279,16 +268,16 @@ export class DefinedSchemas {
     }
 
     if (this.migrationsOptions.recreateModifiedFields === true) {
-      fieldsToRecreate.forEach(fieldName => {
-        newLocalSchema.deleteField(fieldName);
+      fieldsToRecreate.forEach(field => {
+        newLocalSchema.deleteField(field.fieldName);
       });
 
       // Delete fields from the schema then apply changes
       await this.updateSchemaToDB(newLocalSchema);
 
-      fieldsToRecreate.forEach(fieldName => {
-        const field = localSchema.fields[fieldName];
-        this.handleFields(newLocalSchema, fieldName, field);
+      fieldsToRecreate.forEach(fieldInfo => {
+        const field = localSchema.fields[fieldInfo.fieldName];
+        this.handleFields(newLocalSchema, fieldInfo.fieldName, field);
       });
     } else if (this.migrationsOptions.strict === true && fieldsToRecreate.length) {
       fieldsToRecreate.forEach(field => {
@@ -359,14 +348,6 @@ export class DefinedSchemas {
     }
     // Use spread to avoid read only issue (encountered by Moumouls using directAccess)
     const clp = { ...localSchema.classLevelPermissions } || {};
-    // const cloudCLP = (cloudSchema && cloudSchema.classLevelPermissions) || {};
-    // // Try to inject default CLPs
-    // const CLPKeys = ['find', 'count', 'get', 'create', 'update', 'delete', 'addField'];
-    // CLPKeys.forEach(key => {
-    //   if (!clp[key] && cloudCLP[key]) {
-    //     clp[key] = cloudCLP[key];
-    //   }
-    // });
     // To avoid inconsistency we need to remove all rights on addField
     clp.addField = {};
     newLocalSchema.setCLP(clp);
