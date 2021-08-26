@@ -83,10 +83,27 @@ class ParseServer {
     // Note: Tests will start to fail if any validation happens after this is called.
     databaseController
       .performInitialization()
-      .then(() => hooksController.load())
-      .then(() => {
+      .then(async () => await hooksController.load())
+      .then(async () => {
         if (serverStartComplete) {
-          serverStartComplete();
+          await serverStartComplete();
+        }
+      })
+      .then(() => {
+        if (cloud) {
+          addParseCloud();
+          if (typeof cloud === 'function') {
+            cloud(Parse);
+          } else if (typeof cloud === 'string') {
+            require(path.resolve(process.cwd(), cloud));
+          } else {
+            throw "argument 'cloud' must either be a string or a function";
+          }
+        }
+      })
+      .then(() => {
+        if (security && security.enableCheck && security.enableCheckLog) {
+          new CheckRunner(options.security).run();
         }
       })
       .catch(error => {
@@ -97,21 +114,6 @@ class ParseServer {
           process.exit(1);
         }
       });
-
-    if (cloud) {
-      addParseCloud();
-      if (typeof cloud === 'function') {
-        cloud(Parse);
-      } else if (typeof cloud === 'string') {
-        require(path.resolve(process.cwd(), cloud));
-      } else {
-        throw "argument 'cloud' must either be a string or a function";
-      }
-    }
-
-    if (security && security.enableCheck && security.enableCheckLog) {
-      new CheckRunner(options.security).run();
-    }
   }
 
   get app() {
