@@ -90,8 +90,26 @@ class ParseServer {
         if (schema) {
           await new DefinedSchemas(schema, this.config).execute();
         }
+      })
+      .then(async () => {
         if (serverStartComplete) {
-          serverStartComplete();
+          await serverStartComplete();
+        }
+      })
+      .then(() => {
+        if (cloud) {
+          addParseCloud();
+          if (typeof cloud === 'function') {
+            cloud(Parse);
+          } else if (typeof cloud === 'string') {
+            require(path.resolve(process.cwd(), cloud));
+          } else {
+            throw "argument 'cloud' must either be a string or a function";
+          }
+        }
+
+        if (security && security.enableCheck && security.enableCheckLog) {
+          new CheckRunner(options.security).run();
         }
       })
       .catch(error => {
@@ -102,21 +120,6 @@ class ParseServer {
           process.exit(1);
         }
       });
-
-    if (cloud) {
-      addParseCloud();
-      if (typeof cloud === 'function') {
-        cloud(Parse);
-      } else if (typeof cloud === 'string') {
-        require(path.resolve(process.cwd(), cloud));
-      } else {
-        throw "argument 'cloud' must either be a string or a function";
-      }
-    }
-
-    if (security && security.enableCheck && security.enableCheckLog) {
-      new CheckRunner(options.security).run();
-    }
   }
 
   get app() {
