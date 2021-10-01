@@ -703,7 +703,7 @@ ParseCloud.onLiveQueryEvent = function (handler) {
  */
 ParseCloud.beforeUnsubscribe = function (parseClass, handler, validationHandler) {
   validateValidator(validationHandler);
-  var className = getClassName(parseClass);
+  const className = getClassName(parseClass);
   triggers.addTrigger(
     triggers.Types.beforeUnsubscribe,
     className,
@@ -711,10 +711,6 @@ ParseCloud.beforeUnsubscribe = function (parseClass, handler, validationHandler)
     Parse.applicationId,
     validationHandler
   );
-};
-
-ParseCloud.onLiveQueryEvent = function (handler) {
-  triggers.addLiveQueryEventHandler(handler, Parse.applicationId);
 };
 
 /**

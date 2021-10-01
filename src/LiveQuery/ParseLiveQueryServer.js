@@ -848,20 +848,24 @@ class ParseLiveQueryServer {
         request.user = auth.user;
       }
 
-      const parseQuery = new Parse.Query(className);
-      parseQuery.withJSON(request.query);
-      request.query = subscription.query;
       request.sessionToken = subscriptionInfo.sessionToken;
       request.useMasterKey = client.hasMasterKey;
       request.installationId = client.installationId;
 
-      await runTrigger(trigger, `beforeUnsubscribe.${className}`, request, auth);
-
-      const query = request.query.toJSON();
-      if (query.keys) {
-        query.fields = query.keys.split(',');
+      try {
+        await runTrigger(trigger, `beforeUnsubscribe.${className}`, request, auth);
+      } catch (error) {
+        Client.pushError(
+          parseWebsocket,
+          error.code || Parse.Error.SCRIPT_FAILED,
+          error.message || error,
+          false
+        );
+        logger.error(
+          `Failed running beforeUnsubscribe for session ${request.sessionToken} with:\n Error: ` +
+            JSON.stringify(error)
+        );
       }
-      request.query = query;
     }
 
     // Remove subscription from client
