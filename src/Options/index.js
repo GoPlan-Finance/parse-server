@@ -242,7 +242,7 @@ export interface ParseServerOptions {
   playgroundPath: ?string;
   /* Callback when server has started */
   serverStartComplete: ?(error: ?Error) => void;
-  /* Rest representation on Parse.Schema https://docs.parseplatform.org/rest/guide/#adding-a-schema */
+  /* Rest representation on Parse.Schema */
   schema: ?SchemaOptions;
   /* Callback when server has closed */
   serverCloseComplete: ?() => void;
