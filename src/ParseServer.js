@@ -83,38 +83,15 @@ class ParseServer {
     logging.setLogger(loggerController);
 
     // Note: Tests will start to fail if any validation happens after this is called.
-    Promise.resolve()
-      .then(async () => await databaseController.performInitialization())
-      .then(async () => await hooksController.load())
+    databaseController
+      .performInitialization()
+      .then(() => hooksController.load())
       .then(async () => {
         if (schema) {
           await new DefinedSchemas(schema, this.config).execute();
         }
-      })
-      .then(async () => {
-        if (cloud) {
-          await addParseCloud();
-          if (typeof cloud === 'function') {
-            await cloud(Parse);
-          } else if (typeof cloud === 'string') {
-            if (process.env.npm_package_type === 'module') {
-              import(path.resolve(process.cwd(), cloud));
-            } else {
-              require(path.resolve(process.cwd(), cloud));
-            }
-          } else {
-            throw "argument 'cloud' must either be a string or a function";
-          }
-        }
-      })
-      .then(async () => {
-        if (security && security.enableCheck && security.enableCheckLog) {
-          new CheckRunner(options.security).run();
-        }
-      })
-      .then(async () => {
         if (serverStartComplete) {
-          await serverStartComplete();
+          serverStartComplete();
         }
       })
       .catch(error => {
@@ -125,6 +102,21 @@ class ParseServer {
           process.exit(1);
         }
       });
+
+    if (cloud) {
+      addParseCloud();
+      if (typeof cloud === 'function') {
+        cloud(Parse);
+      } else if (typeof cloud === 'string') {
+        require(path.resolve(process.cwd(), cloud));
+      } else {
+        throw "argument 'cloud' must either be a string or a function";
+      }
+    }
+
+    if (security && security.enableCheck && security.enableCheckLog) {
+      new CheckRunner(options.security).run();
+    }
   }
 
   get app() {

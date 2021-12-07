@@ -78,7 +78,7 @@ export class DefinedSchemas {
       logger.info('Running Migrations Completed');
     } catch (e) {
       logger.error(`Failed to run migrations: ${e}`);
-      throw e;
+      if (process.env.NODE_ENV === 'production') process.exit(1);
     }
   }
 
