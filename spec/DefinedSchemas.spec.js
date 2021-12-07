@@ -12,14 +12,11 @@ const cleanUpIndexes = schema => {
 
 describe('DefinedSchemas', () => {
   let config;
-  beforeEach(async () => {
-    jasmine.DEFAULT_TIMEOUT_INTERVAL = 100000000;
-
+  afterEach(async () => {
     config = Config.get('test');
-    await config.database.adapter.deleteAllClasses();
-  });
-  afterAll(async () => {
-    await config.database.adapter.deleteAllClasses();
+    if (config) {
+      await config.database.adapter.deleteAllClasses();
+    }
   });
 
   describe('Fields', () => {
@@ -396,45 +393,45 @@ describe('DefinedSchemas', () => {
       cleanUpIndexes(schema);
       expect(schema.indexes).toBeUndefined();
     });
-    // xit('should keep protected indexes', async () => {
-    //   const server = await reconfigureServer();
-    //
-    //   const expectedIndexes = {
-    //     username_1: { username: 1 },
-    //     case_insensitive_username: { username: 1 },
-    //     email_1: { email: 1 },
-    //     case_insensitive_email: { email: 1 },
-    //   };
-    //   const schemas = {
-    //     definitions: [
-    //       {
-    //         className: '_User',
-    //         indexes: {
-    //           case_insensitive_username: { password: true },
-    //           case_insensitive_email: { password: true },
-    //         },
-    //       },
-    //       { className: 'Test' },
-    //     ],
-    //   };
-    //   Create
-    // await new DefinedSchemas(schemas, server.config).execute();
-    // let userSchema = await new Parse.Schema('_User').get();
-    // let testSchema = await new Parse.Schema('Test').get();
-    // cleanUpIndexes(userSchema);
-    // cleanUpIndexes(testSchema);
-    // expect(testSchema.indexes).toBeUndefined();
-    // expect(userSchema.indexes).toEqual(expectedIndexes);
-    //
-    // Update
-    // await new DefinedSchemas(schemas, server.config).execute();
-    // userSchema = await new Parse.Schema('_User').get();
-    // testSchema = await new Parse.Schema('Test').get();
-    // cleanUpIndexes(userSchema);
-    // cleanUpIndexes(testSchema);
-    // expect(testSchema.indexes).toBeUndefined();
-    // expect(userSchema.indexes).toEqual(expectedIndexes);
-    // });
+    xit('should keep protected indexes', async () => {
+      const server = await reconfigureServer();
+
+      const expectedIndexes = {
+        username_1: { username: 1 },
+        case_insensitive_username: { username: 1 },
+        email_1: { email: 1 },
+        case_insensitive_email: { email: 1 },
+      };
+      const schemas = {
+        definitions: [
+          {
+            className: '_User',
+            indexes: {
+              case_insensitive_username: { password: true },
+              case_insensitive_email: { password: true },
+            },
+          },
+          { className: 'Test' },
+        ],
+      };
+      //  Create
+      await new DefinedSchemas(schemas, server.config).execute();
+      let userSchema = await new Parse.Schema('_User').get();
+      let testSchema = await new Parse.Schema('Test').get();
+      cleanUpIndexes(userSchema);
+      cleanUpIndexes(testSchema);
+      expect(testSchema.indexes).toBeUndefined();
+      expect(userSchema.indexes).toEqual(expectedIndexes);
+
+      //   Update
+      await new DefinedSchemas(schemas, server.config).execute();
+      userSchema = await new Parse.Schema('_User').get();
+      testSchema = await new Parse.Schema('Test').get();
+      cleanUpIndexes(userSchema);
+      cleanUpIndexes(testSchema);
+      expect(testSchema.indexes).toBeUndefined();
+      expect(userSchema.indexes).toEqual(expectedIndexes);
+    });
   });
 
   describe('ClassLevelPermissions', () => {
@@ -544,21 +541,17 @@ describe('DefinedSchemas', () => {
     expect(schema.className).toEqual('Test');
 
     const schemas = await Parse.Schema.all();
-    expect(schemas.length).toEqual(3);
+    // Role could be flaky since all system classes are not ensured
+    // at start up by the DefinedSchema system
+    expect(schemas.filter(({ className }) => className !== '_Role').length).toEqual(3);
 
-    try {
-      await new Parse.Schema('TheNewTest').save();
-      fail('TheNewTest.save() should have failed');
-    } catch (e) {
-      expect(e.message).toContain('Cannot perform this operation when schemas options is used.');
-    }
+    await expectAsync(new Parse.Schema('TheNewTest').save()).toBeRejectedWithError(
+      'Cannot perform this operation when schemas options is used.'
+    );
 
-    try {
-      await new Parse.Schema('_User').update();
-      fail('_User.update() should have failed');
-    } catch (e) {
-      expect(e.message).toContain('Cannot perform this operation when schemas options is used.');
-    }
+    await expectAsync(new Parse.Schema('_User').update()).toBeRejectedWithError(
+      'Cannot perform this operation when schemas options is used.'
+    );
   });
   it('should only enable delete class endpoint since', async () => {
     await reconfigureServer({
@@ -574,34 +567,26 @@ describe('DefinedSchemas', () => {
     expect(schemas.length).toEqual(3);
   });
   it('should run beforeMigration before execution of DefinedSchemas', async () => {
-    let before = false;
-    const server = await reconfigureServer({
+    const config = {
       schema: {
         definitions: [{ className: '_User' }, { className: 'Test' }],
-        beforeMigration: async () => {
-          expect(before).toEqual(false);
-          before = true;
-        },
+        beforeMigration: async () => {},
       },
-    });
-    before = true;
-    expect(before).toEqual(true);
-    expect(server).toBeDefined();
+    };
+    const spy = spyOn(config.schema, 'beforeMigration');
+    await reconfigureServer(config);
+    expect(spy).toHaveBeenCalledTimes(1);
   });
   it('should run afterMigration after execution of DefinedSchemas', async () => {
-    let before = false;
-    const server = await reconfigureServer({
+    const config = {
       schema: {
         definitions: [{ className: '_User' }, { className: 'Test' }],
-        afterMigration: async () => {
-          expect(before).toEqual(false);
-          before = true;
-        },
+        afterMigration: async () => {},
       },
-    });
-    before = true;
-    expect(before).toEqual(true);
-    expect(server).toBeDefined();
+    };
+    const spy = spyOn(config.schema, 'afterMigration');
+    await reconfigureServer(config);
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it('should use logger in case of error', async () => {
@@ -610,7 +595,7 @@ describe('DefinedSchemas', () => {
     const logger = require('../lib/logger').logger;
     spyOn(DefinedSchemas.prototype, 'wait').and.resolveTo();
     spyOn(logger, 'error').and.callThrough();
-    spyOn(Parse.Schema, 'all').and.callFake(async () => {
+    spyOn(Parse.Schema, 'all').and.callFake(() => {
       throw error;
     });
 

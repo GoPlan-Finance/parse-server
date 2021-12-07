@@ -1,4 +1,5 @@
 // @flow
+// @flow-disable-next Cannot resolve module `parse/node`.
 const Parse = require('parse/node');
 import { logger } from '../logger';
 import Config from '../Config';
@@ -13,12 +14,12 @@ export class DefinedSchemas {
   localSchemas: Migrations.JSONSchema[];
   retries: number;
   maxRetries: number;
+  allCloudSchemas: Parse.Schema[];
 
   constructor(schemaOptions: Migrations.SchemaOptions, config: ParseServerOptions) {
     this.localSchemas = [];
     this.config = Config.get(config.appId);
     this.schemaOptions = schemaOptions;
-
     if (schemaOptions && schemaOptions.definitions) {
       if (!Array.isArray(schemaOptions.definitions)) {
         throw `"schema.definitions" must be an array of schemas`;
@@ -31,8 +32,6 @@ export class DefinedSchemas {
     this.maxRetries = 3;
   }
 
-  // Simulate save like the SDK
-  // We cannot use SDK since routes are disabled
   async saveSchemaToDB(schema: Parse.Schema): Promise<void> {
     const payload = {
       className: schema.className,
@@ -151,11 +150,11 @@ export class DefinedSchemas {
   }
 
   // Required for testing purpose
-  async wait(time) {
-    await new Promise(resolve => setTimeout(resolve, time));
+  wait(time: number) {
+    return new Promise<void>(resolve => setTimeout(resolve, time));
   }
 
-  async enforceCLPForNonProvidedClass(): void {
+  async enforceCLPForNonProvidedClass(): Promise<void> {
     const nonProvidedClasses = this.allCloudSchemas.filter(
       cloudSchema =>
         !this.localSchemas.some(localSchema => localSchema.className === cloudSchema.className)
@@ -201,14 +200,16 @@ export class DefinedSchemas {
       Object.keys(localSchema.fields)
         .filter(fieldName => !this.isProtectedFields(localSchema.className, fieldName))
         .forEach(fieldName => {
-          const field = localSchema.fields[fieldName];
-          this.handleFields(newLocalSchema, fieldName, field);
+          if (localSchema.fields) {
+            const field = localSchema.fields[fieldName];
+            this.handleFields(newLocalSchema, fieldName, field);
+          }
         });
     }
     // Handle indexes
     if (localSchema.indexes) {
       Object.keys(localSchema.indexes).forEach(indexName => {
-        if (!this.isProtectedIndex(localSchema.className, indexName)) {
+        if (localSchema.indexes && !this.isProtectedIndex(localSchema.className, indexName)) {
           newLocalSchema.addIndex(indexName, localSchema.indexes[indexName]);
         }
       });
@@ -228,16 +229,19 @@ export class DefinedSchemas {
       Object.keys(localSchema.fields)
         .filter(fieldName => !this.isProtectedFields(localSchema.className, fieldName))
         .forEach(fieldName => {
+          // @flow-disable-next
           const field = localSchema.fields[fieldName];
-          if (!cloudSchema.fields[fieldName]) this.handleFields(newLocalSchema, fieldName, field);
+          if (!cloudSchema.fields[fieldName]) {
+            this.handleFields(newLocalSchema, fieldName, field);
+          }
         });
     }
 
     const fieldsToDelete: string[] = [];
     const fieldsToRecreate: {
       fieldName: string,
-      from: { type: string, targetClass: string },
-      to: { type: string, targetClass: string },
+      from: { type: string, targetClass?: string },
+      to: { type: string, targetClass?: string },
     }[] = [];
     const fieldsWithChangedParams: string[] = [];
 
@@ -297,8 +301,10 @@ export class DefinedSchemas {
       await this.updateSchemaToDB(newLocalSchema);
 
       fieldsToRecreate.forEach(fieldInfo => {
-        const field = localSchema.fields[fieldInfo.fieldName];
-        this.handleFields(newLocalSchema, fieldInfo.fieldName, field);
+        if (localSchema.fields) {
+          const field = localSchema.fields[fieldInfo.fieldName];
+          this.handleFields(newLocalSchema, fieldInfo.fieldName, field);
+        }
       });
     } else if (this.schemaOptions.strict === true && fieldsToRecreate.length) {
       fieldsToRecreate.forEach(field => {
@@ -313,8 +319,10 @@ export class DefinedSchemas {
     }
 
     fieldsWithChangedParams.forEach(fieldName => {
-      const field = localSchema.fields[fieldName];
-      this.handleFields(newLocalSchema, fieldName, field);
+      if (localSchema.fields) {
+        const field = localSchema.fields[fieldName];
+        this.handleFields(newLocalSchema, fieldName, field);
+      }
     });
 
     // Handle Indexes
@@ -324,8 +332,11 @@ export class DefinedSchemas {
         if (
           (!cloudSchema.indexes || !cloudSchema.indexes[indexName]) &&
           !this.isProtectedIndex(localSchema.className, indexName)
-        )
-          newLocalSchema.addIndex(indexName, localSchema.indexes[indexName]);
+        ) {
+          if (localSchema.indexes) {
+            newLocalSchema.addIndex(indexName, localSchema.indexes[indexName]);
+          }
+        }
       });
     }
 
@@ -341,10 +352,12 @@ export class DefinedSchemas {
             !this.paramsAreEquals(localSchema.indexes[indexName], cloudSchema.indexes[indexName])
           ) {
             newLocalSchema.deleteIndex(indexName);
-            indexesToAdd.push({
-              indexName,
-              index: localSchema.indexes[indexName],
-            });
+            if (localSchema.indexes) {
+              indexesToAdd.push({
+                indexName,
+                index: localSchema.indexes[indexName],
+              });
+            }
           }
         }
       });
@@ -363,25 +376,29 @@ export class DefinedSchemas {
     }
   }
 
-  handleCLP(localSchema: Migrations.JSONSchema, newLocalSchema: Parse.Schema, cloudSchema) {
+  handleCLP(
+    localSchema: Migrations.JSONSchema,
+    newLocalSchema: Parse.Schema,
+    cloudSchema: Parse.Schema
+  ) {
     if (!localSchema.classLevelPermissions && !cloudSchema) {
       logger.warn(`classLevelPermissions not provided for ${localSchema.className}.`);
     }
     // Use spread to avoid read only issue (encountered by Moumouls using directAccess)
-    const clp = { ...localSchema.classLevelPermissions } || {};
+    const clp = ({ ...localSchema.classLevelPermissions } || {}: Parse.CLP.PermissionsMap);
     // To avoid inconsistency we need to remove all rights on addField
     clp.addField = {};
     newLocalSchema.setCLP(clp);
   }
 
-  isProtectedFields(className, fieldName) {
+  isProtectedFields(className: string, fieldName: string) {
     return (
       !!defaultColumns._Default[fieldName] ||
       !!(defaultColumns[className] && defaultColumns[className][fieldName])
     );
   }
 
-  isProtectedIndex(className, indexName) {
+  isProtectedIndex(className: string, indexName: string) {
     let indexes = ['_id_'];
     if (className === '_User') {
       indexes = [
@@ -396,9 +413,9 @@ export class DefinedSchemas {
     return indexes.indexOf(indexName) !== -1;
   }
 
-  paramsAreEquals<T>(objA: T, objB: T) {
-    const keysA = Object.keys(objA);
-    const keysB = Object.keys(objB);
+  paramsAreEquals<T: { [key: string]: any }>(objA: T, objB: T) {
+    const keysA: string[] = Object.keys(objA);
+    const keysB: string[] = Object.keys(objB);
 
     // Check key name
     if (keysA.length !== keysB.length) return false;

@@ -13,20 +13,6 @@ const passwordCrypto = require('../lib/password');
 const Config = require('../lib/Config');
 const cryptoUtils = require('../lib/cryptoUtils');
 
-function verifyACL(user) {
-  const ACL = user.getACL();
-  expect(ACL.getReadAccess(user)).toBe(true);
-  expect(ACL.getWriteAccess(user)).toBe(true);
-  expect(ACL.getPublicReadAccess()).toBe(true);
-  expect(ACL.getPublicWriteAccess()).toBe(false);
-  const perms = ACL.permissionsById;
-  expect(Object.keys(perms).length).toBe(2);
-  expect(perms[user.id].read).toBe(true);
-  expect(perms[user.id].write).toBe(true);
-  expect(perms['*'].read).toBe(true);
-  expect(perms['*'].write).not.toBe(true);
-}
-
 describe('Parse.User testing', () => {
   it('user sign up class method', async done => {
     const user = await Parse.User.signUp('asdf', 'zxcv');
@@ -86,7 +72,9 @@ describe('Parse.User testing', () => {
       })
       .catch(err => {
         expect(err.status).toBe(404);
-        expect(err.text).toMatch('{"code":101,"error":"Invalid username/password."}');
+        expect(err.text).toMatch(
+          `{"code":${Parse.Error.OBJECT_NOT_FOUND},"error":"Invalid username/password."}`
+        );
         done();
       });
   });
@@ -113,7 +101,9 @@ describe('Parse.User testing', () => {
       })
       .catch(err => {
         expect(err.status).toBe(404);
-        expect(err.text).toMatch('{"code":101,"error":"Invalid username/password."}');
+        expect(err.text).toMatch(
+          `{"code":${Parse.Error.OBJECT_NOT_FOUND},"error":"Invalid username/password."}`
+        );
         done();
       });
   });
@@ -146,7 +136,17 @@ describe('Parse.User testing', () => {
     await Parse.User.signUp('asdf', 'zxcv');
     const user = await Parse.User.logIn('asdf', 'zxcv');
     equal(user.get('username'), 'asdf');
-    verifyACL(user);
+    const ACL = user.getACL();
+    expect(ACL.getReadAccess(user)).toBe(true);
+    expect(ACL.getWriteAccess(user)).toBe(true);
+    expect(ACL.getPublicReadAccess()).toBe(true);
+    expect(ACL.getPublicWriteAccess()).toBe(false);
+    const perms = ACL.permissionsById;
+    expect(Object.keys(perms).length).toBe(2);
+    expect(perms[user.id].read).toBe(true);
+    expect(perms[user.id].write).toBe(true);
+    expect(perms['*'].read).toBe(true);
+    expect(perms['*'].write).not.toBe(true);
     done();
   });
 
@@ -3934,6 +3934,31 @@ describe('Parse.User testing', () => {
     }
   });
 
+  it('should throw when enforcePrivateUsers is invalid', async () => {
+    const options = [[], 'a', 0, {}];
+    for (const option of options) {
+      await expectAsync(reconfigureServer({ enforcePrivateUsers: option })).toBeRejected();
+    }
+  });
+
+  it('user login with enforcePrivateUsers', async done => {
+    await reconfigureServer({ enforcePrivateUsers: true });
+    await Parse.User.signUp('asdf', 'zxcv');
+    const user = await Parse.User.logIn('asdf', 'zxcv');
+    equal(user.get('username'), 'asdf');
+    const ACL = user.getACL();
+    expect(ACL.getReadAccess(user)).toBe(true);
+    expect(ACL.getWriteAccess(user)).toBe(true);
+    expect(ACL.getPublicReadAccess()).toBe(false);
+    expect(ACL.getPublicWriteAccess()).toBe(false);
+    const perms = ACL.permissionsById;
+    expect(Object.keys(perms).length).toBe(1);
+    expect(perms[user.id].read).toBe(true);
+    expect(perms[user.id].write).toBe(true);
+    expect(perms['*']).toBeUndefined();
+    done();
+  });
+
   describe('issue #4897', () => {
     it_only_db('mongo')('should be able to login with a legacy user (no ACL)', async () => {
       // This issue is a side effect of the locked users and legacy users which don't have ACL's
@@ -3998,7 +4023,6 @@ describe('Parse.User testing', () => {
       subscription.on(key, calls[key]);
     }
     const user = await Parse.User._logInWith('facebook');
-
     user.set('foo', 'bar');
     await user.save();
     user.unset('foo');
@@ -4006,13 +4030,14 @@ describe('Parse.User testing', () => {
     user.set('yolo', 'bar');
     await user.save();
     await user.destroy();
-    await new Promise(resolve => process.nextTick(resolve));
+    await new Promise(resolve => setTimeout(resolve, 10));
     for (const key of events) {
       expect(calls[key]).toHaveBeenCalled();
     }
+    subscription.unsubscribe();
     const client = await Parse.CoreManager.getLiveQueryController().getDefaultLiveQueryClient();
     client.close();
-    await new Promise(resolve => process.nextTick(resolve));
+    await new Promise(resolve => setTimeout(resolve, 10));
   });
 });
 
